@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>무한 꼬들 (6자모)</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--key:#d3d6da;--g:#4a9d5b;--y:#c9a227;--x:#787c7e;--bd:#c4c7cb;--mut:#666;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121213;--fg:#f2f2f2;--key:#818384;--g:#538d4e;--y:#b59f3b;--x:#3a3a3c;--bd:#3a3a3c;--mut:#aaa;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121213;--fg:#f2f2f2;--key:#818384;--g:#538d4e;--y:#b59f3b;--x:#3a3a3c;--bd:#3a3a3c;--mut:#aaa;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif}
+body{display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:12px 8px 16px}
+h1{font-size:20px;margin:4px 0 2px}
+#stat{font-size:13px;color:var(--mut);margin-bottom:10px}
+#board{display:grid;gap:5px;margin-bottom:10px}
+.row{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.t{width:min(54px,13vw);aspect-ratio:1;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;font-size:clamp(20px,6vw,28px);font-weight:700}
+.t.f{border-color:var(--x)}
+.t.g,.t.y,.t.x{color:#fff;border-color:transparent}
+.g{background:var(--g)}.y{background:var(--y)}.x{background:var(--x)}
+#msg{min-height:44px;text-align:center;font-size:14px;margin-bottom:4px}
+#msg b{font-size:18px}
+#next{display:none;margin-top:6px;padding:8px 18px;border:0;border-radius:8px;background:var(--g);color:#fff;font-size:15px;font-weight:700}
+#kb{width:100%;max-width:480px;display:flex;flex-direction:column;gap:6px}
+.kr{display:flex;gap:4px;justify-content:center}
+.k{flex:1;min-width:0;height:48px;border:0;border-radius:6px;background:var(--key);color:var(--fg);font-size:17px;font-weight:600;padding:0}
+.k.w{flex:1.5;font-size:13px}
+.k.g,.k.y,.k.x{color:#fff}
+.k.on{outline:2px solid var(--g)}
+</style>
+</head>
+<body>
+<h1>무한 꼬들 · 6자모</h1>
+<div id="stat"></div>
+<div id="board"></div>
+<div id="msg"></div>
+<button id="next">다음 단어</button>
+<div id="kb"></div>
+
+<script>
+// ───────── 설정 ─────────
+const LEN = 6, TRIES = 6;
+// true면 6자모만 채우면 통과. 큰 사전을 붙인 뒤 false로 바꾸고 VALID에 단어 목록을 넣으세요.
+const ALLOW_ANY = true;
+// 정답 후보(임시). 6자모로 분해되는 것만 자동으로 남습니다. 여기에 사전 데이터를 붙이세요.
+const WORDS = `바나나 고구마 학생 신발 책상 공책 지우개 오렌지 달걀 자전거 놀이터 무지개 소나기 개나리 도깨비 잠자리 메뚜기 거북이 코끼리 송아지 망아지 병아리 두꺼비 오징어 고등어 사과나무 구두쇠 아기곰 새우깡 호두과자 수영장 도시락 소풍 보름달 별똥별 새싹 나팔꽃 감나무 소나무 기러기 꾀꼬리 부엉이 나그네 바느질 걸레질 설거지 빨래집게 지렁이 개구리 하루살이 반딧불 풍선껌 장난감 놀이공원`.split(/\s+/);
+const VALID = new Set(); // ALLOW_ANY=false일 때 허용할 단어(자모 문자열)를 넣는 곳
+
+// ───────── 자모 분해 ─────────
+const CHO = Array.from("ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ");
+const JUNG = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅗㅏ","ㅗㅐ","ㅗㅣ","ㅛ","ㅜ","ㅜㅓ","ㅜㅔ","ㅜㅣ","ㅠ","ㅡ","ㅡㅣ","ㅣ"];
+const JONG = ["","ㄱ","ㄲ","ㄱㅅ","ㄴ","ㄴㅈ","ㄴㅎ","ㄷ","ㄹ","ㄹㄱ","ㄹㅁ","ㄹㅂ","ㄹㅅ","ㄹㅌ","ㄹㅍ","ㄹㅎ","ㅁ","ㅂ","ㅂㅅ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+function decompose(word){
+  const out=[];
+  for(const ch of word){
+    const c=ch.charCodeAt(0)-0xAC00;
+    if(c<0||c>11171){out.push(ch);continue}
+    out.push(CHO[Math.floor(c/588)]);
+    out.push(...Array.from(JUNG[Math.floor((c%588)/28)]));
+    out.push(...Array.from(JONG[c%28]));
+  }
+  return out;
+}
+const ANSWERS=[...new Set(WORDS)].map(w=>({w,j:decompose(w)})).filter(o=>o.j.length===LEN);
+
+// ───────── 상태 ─────────
+let ans, rows, cur, over, shift=false, kstate;
+const $=id=>document.getElementById(id);
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+let solved=store.get("k6:solved",[]), streak=store.get("k6:streak",0), wins=store.get("k6:wins",0);
+
+function pick(){
+  let pool=ANSWERS.filter(o=>!solved.includes(o.w));
+  if(!pool.length){solved=[];store.set("k6:solved",solved);pool=ANSWERS}
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+function newGame(){
+  ans=pick();rows=[];cur=[];over=false;kstate={};
+  $("msg").textContent="";$("next").style.display="none";
+  render();
+}
+
+// ───────── 화면 ─────────
+function buildBoard(){
+  const b=$("board");b.innerHTML="";
+  for(let r=0;r<TRIES;r++){
+    const d=document.createElement("div");d.className="row";
+    for(let c=0;c<LEN;c++){const t=document.createElement("div");t.className="t";d.appendChild(t)}
+    b.appendChild(d);
+  }
+}
+const KB=[
+  [..."ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔ"],
+  [..."ㅁㄴㅇㄹㅎㅗㅓㅏㅣ"],
+  ["⇧",..."ㅋㅌㅊㅍㅠㅜㅡ","⌫"]
+];
+const SHIFTED={ㅂ:"ㅃ",ㅈ:"ㅉ",ㄷ:"ㄸ",ㄱ:"ㄲ",ㅅ:"ㅆ",ㅐ:"ㅒ",ㅔ:"ㅖ"};
+function buildKb(){
+  const kb=$("kb");kb.innerHTML="";
+  KB.forEach(r=>{
+    const d=document.createElement("div");d.className="kr";
+    r.forEach(k=>{
+      const b=document.createElement("button");b.className="k"+(k==="⇧"||k==="⌫"?" w":"");
+      b.dataset.k=k;b.onclick=()=>press(k);d.appendChild(b);
+    });
+    kb.appendChild(d);
+  });
+  const e=document.createElement("div");e.className="kr";
+  const eb=document.createElement("button");eb.className="k w";eb.textContent="입력";eb.style.flex="1";eb.onclick=()=>press("ENTER");
+  e.appendChild(eb);kb.appendChild(e);
+}
+function render(){
+  const rs=$("board").children;
+  for(let r=0;r<TRIES;r++){
+    const ts=rs[r].children;
+    for(let c=0;c<LEN;c++){
+      const t=ts[c];t.className="t";t.textContent="";
+      if(r<rows.length){t.textContent=rows[r].g[c];t.classList.add(rows[r].res[c])}
+      else if(r===rows.length&&cur[c]){t.textContent=cur[c];t.classList.add("f")}
+    }
+  }
+  document.querySelectorAll(".k").forEach(b=>{
+    const k=b.dataset.k;
+    b.classList.remove("g","y","x","on");
+    if(k==="⇧"){b.textContent="⇧";if(shift)b.classList.add("on");return}
+    if(k==="⌫"){b.textContent="⌫";return}
+    const ch=shift&&SHIFTED[k]?SHIFTED[k]:k;
+    b.textContent=ch;
+    const s=kstate[ch];if(s)b.classList.add(s);
+  });
+  $("stat").textContent=`푼 단어 ${solved.length}개 · 연승 ${streak} · 후보 ${ANSWERS.length}개`;
+}
+function toast(t){$("msg").textContent=t}
+
+// ───────── 게임 로직 ─────────
+function evaluate(g,a){
+  const res=Array(LEN).fill("x"),cnt={};
+  a.forEach(ch=>cnt[ch]=(cnt[ch]||0)+1);
+  g.forEach((ch,i)=>{if(ch===a[i]){res[i]="g";cnt[ch]--}});
+  g.forEach((ch,i)=>{if(res[i]!=="g"&&cnt[ch]>0){res[i]="y";cnt[ch]--}});
+  return res;
+}
+function submit(){
+  if(cur.length<LEN)return toast(`${LEN}자모를 모두 입력하세요`);
+  if(!ALLOW_ANY&&!VALID.has(cur.join("")))return toast("사전에 없는 단어예요");
+  const res=evaluate(cur,ans.j);
+  rows.push({g:[...cur],res});
+  const rank={x:1,y:2,g:3};
+  cur.forEach((ch,i)=>{if(!kstate[ch]||rank[res[i]]>rank[kstate[ch]])kstate[ch]=res[i]});
+  const win=res.every(r=>r==="g");
+  cur=[];
+  if(win||rows.length>=TRIES){
+    over=true;
+    if(win){solved.push(ans.w);streak++;wins++;toast("")}else{streak=0}
+    $("msg").innerHTML=(win?"정답! ":"아쉬워요. 정답은 ")+`<b>${ans.w}</b>`;
+    store.set("k6:solved",solved);store.set("k6:streak",streak);store.set("k6:wins",wins);
+    $("next").style.display="inline-block";
+  }
+  render();
+}
+function press(k){
+  if(over)return;
+  if(k==="ENTER")return submit();
+  if(k==="⇧"){shift=!shift;return render()}
+  if(k==="⌫"){cur.pop();return render()}
+  if(cur.length<LEN){cur.push(shift&&SHIFTED[k]?SHIFTED[k]:k);shift=false}
+  render();
+}
+
+// 물리 키보드 (한글 IME가 켜져 있어도 e.code로 처리)
+const MAP={KeyQ:"ㅂ",KeyW:"ㅈ",KeyE:"ㄷ",KeyR:"ㄱ",KeyT:"ㅅ",KeyY:"ㅛ",KeyU:"ㅕ",KeyI:"ㅑ",KeyO:"ㅐ",KeyP:"ㅔ",KeyA:"ㅁ",KeyS:"ㄴ",KeyD:"ㅇ",KeyF:"ㄹ",KeyG:"ㅎ",KeyH:"ㅗ",KeyJ:"ㅓ",KeyK:"ㅏ",KeyL:"ㅣ",KeyZ:"ㅋ",KeyX:"ㅌ",KeyC:"ㅊ",KeyV:"ㅍ",KeyB:"ㅠ",KeyN:"ㅜ",KeyM:"ㅡ"};
+document.addEventListener("keydown",e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  if(e.code==="Enter"){e.preventDefault();return press("ENTER")}
+  if(e.code==="Backspace")return press("⌫");
+  const k=MAP[e.code];
+  if(k){e.preventDefault();if(over)return;
+    if(cur.length<LEN){cur.push(e.shiftKey&&SHIFTED[k]?SHIFTED[k]:k);render()}}
+});
+$("next").onclick=newGame;
+
+buildBoard();buildKb();newGame();
+</script>
+</body>
+</html>
